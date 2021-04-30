@@ -1,12 +1,10 @@
-import { Observable, of } from 'rxjs';
-import { HttpService, Injectable } from '@nestjs/common';
+import { config, Observable, of } from 'rxjs';
+import { HttpService, Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 
 @Injectable()
 export class AppService {
-  constructor(private httpService: HttpService) {
-    this.recurrentTache();
-  }
+  constructor(private httpService: HttpService) {}
 
   //ID Hyjal : 542/1390
   urlBnet: string =
@@ -18,7 +16,7 @@ export class AppService {
   //30sec : 30000 ms
   // 1s : 1000 ms
 
-  // @Interval(10000)
+  @Interval(10000)
   recurrentTache() {
     this.getBnetHdv().subscribe((hdvResult: any) => {
       this.mappingBnetToFirebase(hdvResult.data.auctions);
