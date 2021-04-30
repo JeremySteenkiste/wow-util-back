@@ -24,7 +24,8 @@ export class AppService {
   }
 
   getBnetHdv(): Observable<any> {
-    console.log('Appel Bnet API');
+    let timeStamp = new Date();
+    console.log('Appel Bnet API', timeStamp.toLocaleString());
     return this.httpService.get(this.urlBnet, {
       params: {
         namespace: 'dynamic-eu',
@@ -35,6 +36,8 @@ export class AppService {
   }
 
   mappingBnetToFirebase(dataBnet: any[]) {
+    let timeStamp = new Date();
     console.log(dataBnet[0]);
+    console.log('Retour Bnet API', timeStamp.toLocaleString());
   }
 }
