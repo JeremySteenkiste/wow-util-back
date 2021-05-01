@@ -2,6 +2,7 @@ export interface IVente {
   date: string;
   heure: string;
   prix: number;
+  prix_unite: number;
   quantite: number;
 }
 export interface IItem {
