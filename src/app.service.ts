@@ -9,15 +9,59 @@ import firebase from 'firebase';
 @Injectable()
 export class AppService {
   db: firebase.database.Database;
+  token_Bnet: string;
 
   constructor(private httpService: HttpService) {
     this.dbInit();
-    this.recurrentTache();
+    this.createAccessToken(
+      BNET_CONFIG.client_id,
+      BNET_CONFIG.client_secret,
+      'eu',
+    ).then((result: any) => {
+      this.token_Bnet = result.access_token;
+      this.recurrentTache();
+    });
   }
 
   dbInit() {
     firebase.initializeApp(FIREBASE_CONFIG);
     this.db = firebase.database();
+  }
+
+  createAccessToken(apiKey, apiSecret, region = 'eu') {
+    return new Promise((resolve, reject) => {
+      let credentials = Buffer.from(`${apiKey}:${apiSecret}`);
+
+      const requestOptions = {
+        host: `${region}.battle.net`,
+        path: '/oauth/token',
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${credentials.toString('base64')}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      };
+
+      let responseData = '';
+
+      function requestHandler(res) {
+        res.on('data', (chunk) => {
+          responseData += chunk;
+        });
+        res.on('end', () => {
+          let data = JSON.parse(responseData);
+          resolve(data);
+        });
+      }
+
+      let request = require('https').request(requestOptions, requestHandler);
+      request.write('grant_type=client_credentials');
+      request.end();
+
+      request.on('error', (error) => {
+        reject(error);
+      });
+    });
   }
 
   //TODO: BACK : Faire un interval de temps interessant
@@ -28,20 +72,22 @@ export class AppService {
 
   @Interval(3600000)
   recurrentTache() {
-    this.getBnetHdv().subscribe((hdvResult: any) => {
-      console.log(
-        'Retour BNET API',
-        new Date().toLocaleString('fr-FR', {
-          month: 'numeric',
-          day: 'numeric',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }),
-      );
-      this.mappingBnetToFirebase(hdvResult.data.auctions);
-    });
+    if (this.token_Bnet) {
+      this.getBnetHdv().subscribe((hdvResult: any) => {
+        console.log(
+          'Retour BNET API',
+          new Date().toLocaleString('fr-FR', {
+            month: 'numeric',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+          }),
+        );
+        this.mappingBnetToFirebase(hdvResult.data.auctions);
+      });
+    }
   }
 
   getBnetHdv(): Observable<any> {
@@ -58,11 +104,13 @@ export class AppService {
       }),
     );
 
-    // let url =
-    //   'https://eu.api.blizzard.com/data/wow/connected-realm/1390/auctions';
     return this.httpService
       .get(BNET_URL, {
-        params: BNET_CONFIG,
+        params: {
+          namespace: BNET_CONFIG.namespace,
+          locale: BNET_CONFIG.locale,
+          access_token: this.token_Bnet,
+        },
       })
       .pipe(
         catchError((error) => {
