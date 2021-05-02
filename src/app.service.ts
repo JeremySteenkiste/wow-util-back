@@ -1,6 +1,6 @@
-import { catchError } from 'rxjs/operators';
+import { catchError, timestamp } from 'rxjs/operators';
 import { BNET_CONFIG, FIREBASE_CONFIG, BNET_URL } from './constantes';
-import { IHdv } from './models/hdv.model';
+import { IHdv, IItem } from './models/hdv.model';
 import { Observable, of } from 'rxjs';
 import { HttpService, Injectable } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
@@ -58,15 +58,11 @@ export class AppService {
       }),
     );
 
-    let url =
-      'https://eu.api.blizzard.com/data/wow/connected-realm/1390/auctions';
+    // let url =
+    //   'https://eu.api.blizzard.com/data/wow/connected-realm/1390/auctions';
     return this.httpService
-      .get(url, {
-        params: {
-          namespace: 'dynamic-eu',
-          locale: 'fr_FR',
-          access_token: 'USkVg6S1IadjsekF39K2X8blIex8I8taQ2',
-        },
+      .get(BNET_URL, {
+        params: BNET_CONFIG,
       })
       .pipe(
         catchError((error) => {
@@ -88,7 +84,6 @@ export class AppService {
         second: '2-digit',
       }),
     );
-    //TODO: BACK : Faire le mapping sur les données en suivant le model vue avec Nat
     let timeStamp = new Date();
 
     let date =
@@ -112,8 +107,6 @@ export class AppService {
         dataToFirebase.contenu[
           dataToFirebase.contenu.indexOf(itemExistant)
         ].ventes.push({
-          date: date,
-          heure: timeStamp.toLocaleTimeString(),
           //Si pas de prix d'achat immediat
           prix: action.buyout ? action.buyout : -1,
           //Si prix à l'unité présent
@@ -128,8 +121,6 @@ export class AppService {
           //TODO: Check les bonus liste
           ventes: [
             {
-              date: date,
-              heure: timeStamp.toLocaleTimeString(),
               //Si pas de prix d'achat immediat
               prix: action.buyout ? action.buyout : -1,
               //Si prix à l'unité présent
@@ -141,14 +132,14 @@ export class AppService {
       }
     });
 
-    //Purge DB
+    // Purge DB
     // this.db.ref('hdv/').set({});
     this.putDateToFirebase(dataToFirebase);
   }
 
   putDateToFirebase(dataToFirebase: IHdv) {
     console.log(
-      'Set Firebase',
+      'Début Chargement Firebase',
       new Date().toLocaleString('fr-FR', {
         month: 'numeric',
         day: 'numeric',
@@ -159,25 +150,45 @@ export class AppService {
       }),
     );
 
-    //TODO: BACK : Faire l'appel sur firebase pour l'ajout des données formatées
-    this.db
-      .ref('hdv/')
-      .set(dataToFirebase)
-      .then(() => {
-        console.log(
-          'Set Firebase Done',
-          new Date().toLocaleString('fr-FR', {
-            month: 'numeric',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-          }),
-        );
-      })
-      .catch((error) => {
-        console.log('Erreur lors de lajout dans firebase', error);
-      });
+    let timeStamp = new Date();
+
+    let date =
+      timeStamp.getDate().toString().padStart(2, '0') +
+      '-' +
+      (timeStamp.getMonth() + 1).toString().padStart(2, '0') +
+      '-' +
+      timeStamp.getFullYear();
+
+    dataToFirebase.contenu.forEach((item: IItem) => {
+      this.db
+        .ref(
+          'hdv/' +
+            item.id +
+            '/' +
+            date +
+            '/' +
+            timeStamp.toLocaleString('fr-FR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+        )
+        .push(item.ventes)
+        .then(() => {})
+        .catch((error) => {
+          console.log('Erreur lors de lajout dans firebase' + item.id, error);
+        });
+    });
+
+    console.log(
+      'Fin Chargement Firebase',
+      new Date().toLocaleString('fr-FR', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+    );
   }
 }
