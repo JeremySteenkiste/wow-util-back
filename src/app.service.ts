@@ -1,7 +1,7 @@
-import { BNET_CONFIG, FIREBASE_CONFIG } from './constantes';
-import { BNET_URL } from './../../wow-util-app/src/app/constantes/constantes';
-import { IHdv } from './models/hdv.model';
-import { Observable } from 'rxjs';
+import { catchError, timestamp } from 'rxjs/operators';
+import { BNET_CONFIG, FIREBASE_CONFIG, BNET_URL } from './constantes';
+import { IHdv, IItem } from './models/hdv.model';
+import { Observable, of } from 'rxjs';
 import { HttpService, Injectable } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import firebase from 'firebase';
@@ -20,14 +20,13 @@ export class AppService {
     this.db = firebase.database();
   }
 
-  //TODO: BACK : Mettre l'appel toutes les heures
   //TODO: BACK : Faire un interval de temps interessant
   //1h : 3600000
   // 1 min :  60000 ms
   //30sec : 30000 ms
   // 1s : 1000 ms
 
-  // @Interval(30000)
+  @Interval(3600000)
   recurrentTache() {
     this.getBnetHdv().subscribe((hdvResult: any) => {
       console.log(
@@ -58,74 +57,138 @@ export class AppService {
         second: '2-digit',
       }),
     );
-    return this.httpService.get(BNET_URL, {
-      params: BNET_CONFIG,
-    });
+
+    // let url =
+    //   'https://eu.api.blizzard.com/data/wow/connected-realm/1390/auctions';
+    return this.httpService
+      .get(BNET_URL, {
+        params: BNET_CONFIG,
+      })
+      .pipe(
+        catchError((error) => {
+          console.log(error);
+          return of([]);
+        }),
+      );
   }
 
   mappingBnetToFirebase(dataBnet: any[]) {
-    //TODO: BACK : Faire le mapping sur les données en suivant le model vue avec Nat
+    console.log(
+      'Mapping Données',
+      new Date().toLocaleString('fr-FR', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+    );
     let timeStamp = new Date();
 
-    // console.log('Mapping', dataBnet[0]);
-
     let date =
-      timeStamp.getDate() +
+      timeStamp.getDate().toString().padStart(2, '0') +
       '-' +
-      (timeStamp.getMonth() + 1) +
+      (timeStamp.getMonth() + 1).toString().padStart(2, '0') +
       '-' +
       timeStamp.getFullYear();
-    let time = timeStamp.toLocaleTimeString();
-
-    // console.log(date);
-    // console.log(time);
 
     let dataToFirebase: IHdv = {
-      contenu: [
-        {
-          id: '1234',
-          ventes: [
-            {
-              date: 'today',
-              heure: 'today',
-              prix: 5612,
-              quantite: 5612,
-            },
-          ],
-        },
-      ],
+      contenu: [],
     };
 
-    let test = dataToFirebase.contenu.find((item) => {
-      item.id === '1234';
+    //Parcours l'ensemble des données bnet pour les formater
+    dataBnet.forEach((action: any) => {
+      let itemExistant = dataToFirebase.contenu.find((item) => {
+        return item.id === action.item.id;
+      });
+      //Si l'item existe déjà dans le tableau on ajout toutes les ventes à l'item
+      if (itemExistant) {
+        dataToFirebase.contenu[
+          dataToFirebase.contenu.indexOf(itemExistant)
+        ].ventes.push({
+          //Si pas de prix d'achat immediat
+          prix: action.buyout ? action.buyout : -1,
+          //Si prix à l'unité présent
+          prix_unite: action.unit_price ? action.unit_price : -1,
+          quantite: action.quantity,
+        });
+
+        //Sinon on ajoute l'item au tableau
+      } else {
+        dataToFirebase.contenu.push({
+          id: action.item.id,
+          //TODO: Check les bonus liste
+          ventes: [
+            {
+              //Si pas de prix d'achat immediat
+              prix: action.buyout ? action.buyout : -1,
+              //Si prix à l'unité présent
+              prix_unite: action.unit_price ? action.unit_price : -1,
+              quantite: action.quantity,
+            },
+          ],
+        });
+      }
     });
 
-    console.log('TEST', test);
-
-    // dataBnet.forEach((action: any)=>{
-    //   dataToFirebase.contenu.push(
-    //     {
-    //       id: action.item.id,
-    //       bonus_lists: action.item.bonus_lists,
-    //       ventes
-    //     }
-    //   )
-    // })
-
-    //Purge DB
-    //this.db.ref('hdv/').set({});
+    // Purge DB
+    // this.db.ref('hdv/').set({});
+    this.putDateToFirebase(dataToFirebase);
   }
 
-  putDateToFirebase(dataBnet: IHdv) {
-    //TODO: BACK : Faire l'appel sur firebase pour l'ajout des données formatées
-    // this.db
-    //   .ref('hdv/' + date + '/' + time)
-    //   .set(dataBnet)
-    //   .then(() => {
-    //     console.log('Ajout dans firebase');
-    //   })
-    //   .catch((error) => {
-    //     console.log('Erreur lors de lajout dans firebase', error);
-    //   });
+  putDateToFirebase(dataToFirebase: IHdv) {
+    console.log(
+      'Début Chargement Firebase',
+      new Date().toLocaleString('fr-FR', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+    );
+
+    let timeStamp = new Date();
+
+    let date =
+      timeStamp.getDate().toString().padStart(2, '0') +
+      '-' +
+      (timeStamp.getMonth() + 1).toString().padStart(2, '0') +
+      '-' +
+      timeStamp.getFullYear();
+
+    dataToFirebase.contenu.forEach((item: IItem) => {
+      this.db
+        .ref(
+          'hdv/' +
+            item.id +
+            '/' +
+            date +
+            '/' +
+            timeStamp.toLocaleString('fr-FR', {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+        )
+        .push(item.ventes)
+        .then(() => {})
+        .catch((error) => {
+          console.log('Erreur lors de lajout dans firebase' + item.id, error);
+        });
+    });
+
+    console.log(
+      'Fin Chargement Firebase',
+      new Date().toLocaleString('fr-FR', {
+        month: 'numeric',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+    );
   }
 }
