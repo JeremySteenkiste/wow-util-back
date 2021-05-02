@@ -13,14 +13,7 @@ export class AppService {
 
   constructor(private httpService: HttpService) {
     this.dbInit();
-    this.createAccessToken(
-      BNET_CONFIG.client_id,
-      BNET_CONFIG.client_secret,
-      'eu',
-    ).then((result: any) => {
-      this.token_Bnet = result.access_token;
-      this.recurrentTache();
-    });
+    this.getTokenBnet();
   }
 
   dbInit() {
@@ -53,7 +46,6 @@ export class AppService {
           resolve(data);
         });
       }
-
       let request = require('https').request(requestOptions, requestHandler);
       request.write('grant_type=client_credentials');
       request.end();
@@ -61,6 +53,17 @@ export class AppService {
       request.on('error', (error) => {
         reject(error);
       });
+    });
+  }
+
+  getTokenBnet() {
+    return this.createAccessToken(
+      BNET_CONFIG.client_id,
+      BNET_CONFIG.client_secret,
+      'eu',
+    ).then((result: any) => {
+      this.token_Bnet = result.access_token;
+      this.recurrentTache();
     });
   }
 
@@ -72,22 +75,20 @@ export class AppService {
 
   @Interval(3600000)
   recurrentTache() {
-    if (this.token_Bnet) {
-      this.getBnetHdv().subscribe((hdvResult: any) => {
-        console.log(
-          'Retour BNET API',
-          new Date().toLocaleString('fr-FR', {
-            month: 'numeric',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-          }),
-        );
-        this.mappingBnetToFirebase(hdvResult.data.auctions);
-      });
-    }
+    this.getBnetHdv().subscribe((hdvResult: any) => {
+      console.log(
+        'Retour BNET API',
+        new Date().toLocaleString('fr-FR', {
+          month: 'numeric',
+          day: 'numeric',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        }),
+      );
+      this.mappingBnetToFirebase(hdvResult.data.auctions);
+    });
   }
 
   getBnetHdv(): Observable<any> {
@@ -114,7 +115,11 @@ export class AppService {
       })
       .pipe(
         catchError((error) => {
-          console.log(error);
+          console.log(error.response.status);
+          if (error.response.status === 401) {
+            console.log('Error sur le token BNET');
+            this.getTokenBnet();
+          }
           return of([]);
         }),
       );
