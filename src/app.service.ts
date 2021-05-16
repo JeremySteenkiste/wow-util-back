@@ -6,6 +6,8 @@ import { HttpService, Injectable } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import firebase from 'firebase';
 
+var moment = require('moment');
+
 @Injectable()
 export class AppService {
   db: firebase.database.Database;
@@ -14,6 +16,15 @@ export class AppService {
   constructor(private httpService: HttpService) {
     this.dbInit();
     this.getTokenBnet();
+
+    // this.purgeFirebase();
+  }
+
+  purgeFirebase() {
+    // Si la db est trop grosse
+    // firebase database:remove /hdv/ --project wow-util-db
+    console.log('Purge de la db', moment().format('DD/MM/YYYY - HH:mm:ss'));
+    this.db.ref('/hdv/').remove();
   }
 
   dbInit() {
@@ -76,34 +87,14 @@ export class AppService {
   @Interval(3600000)
   recurrentTache() {
     this.getBnetHdv().subscribe((hdvResult: any) => {
-      console.log(
-        'Retour BNET API',
-        new Date().toLocaleString('fr-FR', {
-          month: 'numeric',
-          day: 'numeric',
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }),
-      );
+      console.log('Retour BNET API', moment().format('DD/MM/YYYY - HH:mm:ss'));
       this.mappingBnetToFirebase(hdvResult.data.auctions);
     });
   }
 
   getBnetHdv(): Observable<any> {
     let timeStamp = new Date();
-    console.log(
-      'Appel Bnet API',
-      timeStamp.toLocaleString('fr-FR', {
-        month: 'numeric',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      }),
-    );
+    console.log('Appel Bnet API', moment().format('DD/MM/YYYY - HH:mm:ss'));
 
     return this.httpService
       .get(BNET_URL, {
@@ -126,25 +117,7 @@ export class AppService {
   }
 
   mappingBnetToFirebase(dataBnet: any[]) {
-    console.log(
-      'Mapping Données',
-      new Date().toLocaleString('fr-FR', {
-        month: 'numeric',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      }),
-    );
-    let timeStamp = new Date();
-
-    let date =
-      timeStamp.getDate().toString().padStart(2, '0') +
-      '-' +
-      (timeStamp.getMonth() + 1).toString().padStart(2, '0') +
-      '-' +
-      timeStamp.getFullYear();
+    console.log('Mapping Données', moment().format('DD/MM/YYYY - HH:mm:ss'));
 
     let dataToFirebase: IHdv = {
       contenu: [],
@@ -185,48 +158,28 @@ export class AppService {
       }
     });
 
-    // Purge DB
-    // this.db.ref('hdv/').set({});
     this.putDateToFirebase(dataToFirebase);
   }
 
   putDateToFirebase(dataToFirebase: IHdv) {
     console.log(
       'Début Chargement Firebase',
-      new Date().toLocaleString('fr-FR', {
-        month: 'numeric',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      }),
+      moment().format('DD/MM/YYYY - HH:mm:ss'),
     );
 
-    let timeStamp = new Date();
-
-    let date =
-      timeStamp.getDate().toString().padStart(2, '0') +
-      '-' +
-      (timeStamp.getMonth() + 1).toString().padStart(2, '0') +
-      '-' +
-      timeStamp.getFullYear();
-
     dataToFirebase.contenu.forEach((item: IItem) => {
+      let index;
       this.db
         .ref(
           'hdv/' +
             item.id +
             '/' +
-            date +
+            moment().format('DD-MM-YYYY') +
             '/' +
-            timeStamp.toLocaleString('fr-FR', {
-              hour: '2-digit',
-              minute: '2-digit',
-              timeZone: 'Europe/Paris',
-            }),
+            moment().tz('Europe/Paris').format('HH:mm') +
+            '/ventes',
         )
-        .push(item.ventes)
+        .set(item.ventes)
         .then(() => {})
         .catch((error) => {
           console.log('Erreur lors de lajout dans firebase' + item.id, error);
@@ -235,14 +188,7 @@ export class AppService {
 
     console.log(
       'Fin Chargement Firebase',
-      new Date().toLocaleString('fr-FR', {
-        month: 'numeric',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-      }),
+      moment().format('DD/MM/YYYY - HH:mm:ss'),
     );
   }
 }
